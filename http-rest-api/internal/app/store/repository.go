@@ -7,4 +7,6 @@ type UserRepository interface {
 	Create(*models.User) error
 	FindByEmail(string) (*models.User, error)
 	FindById(int) (*models.User, error)
+	FindAll() (*[]models.User, error)
+	DeleteById(int) error
 }

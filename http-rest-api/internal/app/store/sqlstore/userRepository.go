@@ -12,7 +12,7 @@ type UserRepository struct {
 	store *Store
 }
 
-//Create
+// Create create user
 func (r *UserRepository) Create(u *models.User) error {
 
 	if err := u.Validate(); err != nil {
@@ -29,7 +29,7 @@ func (r *UserRepository) Create(u *models.User) error {
 	).Scan(&u.Id)
 }
 
-// FindById
+// FindById Find user by id
 func (r *UserRepository) FindById(id int) (*models.User, error) {
 	u := &models.User{}
 	if err := r.store.db.QueryRow(
@@ -49,7 +49,7 @@ func (r *UserRepository) FindById(id int) (*models.User, error) {
 	return u, nil
 }
 
-// FindByEmail
+// FindByEmail find user by email
 func (r *UserRepository) FindByEmail(email string) (*models.User, error) {
 	u := &models.User{}
 	if err := r.store.db.QueryRow(
@@ -67,4 +67,32 @@ func (r *UserRepository) FindByEmail(email string) (*models.User, error) {
 	}
 
 	return u, nil
+}
+
+func (r *UserRepository) FindAll() (*[]models.User, error) {
+	rows, err := r.store.db.Query("SELECT * FROM users")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		err = rows.Scan(&u.Id, &u.Email, &u.Password)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return &users, nil
+}
+
+func (r *UserRepository) DeleteById(id int) error {
+	if _, err := r.store.db.Query("DELETE FROM users WHERE id = $1",
+		id,
+	); err != nil {
+		return err
+	}
+
+	return nil
 }
