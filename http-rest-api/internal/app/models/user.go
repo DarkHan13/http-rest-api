@@ -9,6 +9,7 @@ import (
 //User Model
 type User struct {
 	Id                int    `json:"id"`
+	Username          string `json:"username"`
 	Email             string `json:"email"`
 	DecryptedPassword string `json:"-"`
 	Password          string `json:"-"`

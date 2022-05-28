@@ -2,7 +2,6 @@ package sqlstore
 
 import (
 	"database/sql"
-
 	"github.com/DarkHan13/http-rest-api/internal/app/models"
 	"github.com/DarkHan13/http-rest-api/internal/app/store"
 )
@@ -23,8 +22,9 @@ func (r *UserRepository) Create(u *models.User) error {
 		return err
 	}
 
-	return r.store.db.QueryRow("INSERT INTO users (email, password) VALUES($1, $2) RETURNING id",
+	return r.store.db.QueryRow("INSERT INTO users (email, username, password) VALUES($1, $2, $3) RETURNING id",
 		u.Email,
+		u.Username,
 		u.Password,
 	).Scan(&u.Id)
 }
@@ -33,11 +33,12 @@ func (r *UserRepository) Create(u *models.User) error {
 func (r *UserRepository) FindById(id int) (*models.User, error) {
 	u := &models.User{}
 	if err := r.store.db.QueryRow(
-		"SELECT id, email, password from users WHERE id = $1",
+		"SELECT id, email, username, password from users WHERE id = $1",
 		id,
 	).Scan(
 		&u.Id,
 		&u.Email,
+		&u.Username,
 		&u.Password,
 	); err != nil {
 		if err == sql.ErrNoRows {
@@ -53,11 +54,12 @@ func (r *UserRepository) FindById(id int) (*models.User, error) {
 func (r *UserRepository) FindByEmail(email string) (*models.User, error) {
 	u := &models.User{}
 	if err := r.store.db.QueryRow(
-		"SELECT id, email, password from users WHERE email = $1",
+		"SELECT id, email, username, password from users WHERE email = $1",
 		email,
 	).Scan(
 		&u.Id,
 		&u.Email,
+		&u.Username,
 		&u.Password,
 	); err != nil {
 		if err == sql.ErrNoRows {
@@ -70,7 +72,7 @@ func (r *UserRepository) FindByEmail(email string) (*models.User, error) {
 }
 
 func (r *UserRepository) FindAll() (*[]models.User, error) {
-	rows, err := r.store.db.Query("SELECT * FROM users")
+	rows, err := r.store.db.Query("SELECT id, email, username, password FROM users")
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +80,26 @@ func (r *UserRepository) FindAll() (*[]models.User, error) {
 	var users []models.User
 	for rows.Next() {
 		var u models.User
-		err = rows.Scan(&u.Id, &u.Email, &u.Password)
+		err = rows.Scan(&u.Id, &u.Email, &u.Username, &u.Password)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return &users, nil
+}
+
+func (r *UserRepository) FindByUsernameLike(username string) (*[]models.User, error) {
+	rows, err := r.store.db.Query("SELECT id, email, username, password FROM users" +
+		" WHERE username LIKE '%" + username + "%'")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var users []models.User
+	for rows.Next() {
+		var u models.User
+		err = rows.Scan(&u.Id, &u.Email, &u.Username, &u.Password)
 		if err != nil {
 			return nil, err
 		}

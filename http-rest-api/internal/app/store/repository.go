@@ -6,7 +6,13 @@ import "github.com/DarkHan13/http-rest-api/internal/app/models"
 type UserRepository interface {
 	Create(*models.User) error
 	FindByEmail(string) (*models.User, error)
+	FindByUsernameLike(string) (*[]models.User, error)
 	FindById(int) (*models.User, error)
 	FindAll() (*[]models.User, error)
 	DeleteById(int) error
+}
+
+type PostRepository interface {
+	Create(post *models.Post) error
+	FindAllByUserId(int) (*[]models.Post, error)
 }

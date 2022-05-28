@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -58,6 +59,11 @@ func (s *server) configureRouter() {
 	private.HandleFunc("/", s.handleWhoAmI()).Methods("GET")
 	private.HandleFunc("/all", s.findAll()).Methods("GET")
 	private.HandleFunc("/delete", s.handleDelete()).Methods("DELETE")
+	private.HandleFunc("/search_username", s.handleFindUserByUsernameLike()).Methods("GET")
+	posts := s.router.PathPrefix("/private/post").Subrouter()
+	posts.Use(s.authenticateUser)
+	posts.HandleFunc("/create", s.handlePostsCreate()).Methods("POST")
+	posts.HandleFunc("/", s.handleGetPostsForUser()).Methods("GET")
 }
 
 func (s *server) authenticateUser(next http.Handler) http.Handler {
@@ -120,10 +126,30 @@ func (s *server) findAll() http.HandlerFunc {
 	}
 }
 
+func (s *server) handleFindUserByUsernameLike() http.HandlerFunc {
+	type request struct {
+		Username string `json:"username"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		req := &request{}
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		users, err := s.store.User().FindByUsernameLike(req.Username)
+		if err != nil {
+			s.error(w, r, http.StatusInternalServerError, err)
+		}
+		s.respond(w, r, http.StatusOK, users)
+	}
+}
+
 func (s *server) handleUsersCreate() http.HandlerFunc {
 
 	type request struct {
 		Email             string `json:"email"`
+		Username          string `json:"username"`
 		DecryptedPassword string `json:"password"`
 	}
 
@@ -136,6 +162,7 @@ func (s *server) handleUsersCreate() http.HandlerFunc {
 
 		u := models.User{
 			Email:             req.Email,
+			Username:          req.Username,
 			DecryptedPassword: req.DecryptedPassword,
 		}
 		if err := s.store.User().Create(&u); err != nil {
@@ -194,6 +221,47 @@ func (s *server) handleDelete() http.HandlerFunc {
 		}
 		s.respond(w, r, http.StatusOK, nil)
 	}
+}
+
+func (s *server) handlePostsCreate() http.HandlerFunc {
+
+	type request struct {
+		Caption string `json:"caption"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		req := &request{}
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+
+		p := models.Post{
+			UserId:   r.Context().Value(ctxKeyUser).(*models.User).Id,
+			Username: r.Context().Value(ctxKeyUser).(*models.User).Username,
+			Caption:  req.Caption,
+		}
+		if err := s.store.Post().Create(&p); err != nil {
+			s.error(w, r, http.StatusUnprocessableEntity, err)
+			return
+		}
+
+		s.respond(w, r, http.StatusCreated, p)
+	}
+}
+
+func (s *server) handleGetPostsForUser() http.HandlerFunc {
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		userId := r.Context().Value(ctxKeyUser).(*models.User).Id
+		fmt.Println(userId)
+		posts, err := s.store.Post().FindAllByUserId(userId)
+		if err != nil {
+			s.error(w, r, http.StatusInternalServerError, err)
+		}
+		s.respond(w, r, http.StatusOK, posts)
+	}
+
 }
 
 func (s *server) error(w http.ResponseWriter, r *http.Request, code int, err error) {
