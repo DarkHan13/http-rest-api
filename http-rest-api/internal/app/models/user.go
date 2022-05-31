@@ -13,6 +13,7 @@ type User struct {
 	Email             string `json:"email"`
 	DecryptedPassword string `json:"-"`
 	Password          string `json:"-"`
+	Role              string `json:"role"`
 }
 
 //Before Create User
@@ -24,6 +25,7 @@ func (u *User) BeforeCreate() error {
 		}
 		u.Password = enc
 	}
+	u.Role = "USER"
 	return nil
 }
 

@@ -93,6 +93,16 @@ func (r *PostRepository) DeleteById(id, userId int) error {
 	return nil
 }
 
+func (r *PostRepository) DeleteByIdADMIN(id int) error {
+	if _, err := r.store.db.Query("DELETE FROM posts WHERE id = $1",
+		id,
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r *PostRepository) Like(postId, userId int) (*models.Post, error) {
 	var currentId int = 0
 	p := &models.Post{}

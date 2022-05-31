@@ -26,6 +26,7 @@ type ctxKey int8
 const (
 	sessionName        = "DNM"
 	ctxKeyUser  ctxKey = iota
+	ctxKeyRole  ctxKey = 1
 )
 
 type server struct {
@@ -57,12 +58,15 @@ func (s *server) configureRouter() {
 	// /private/*
 	private := s.router.PathPrefix("/private").Subrouter()
 	private.Use(s.authenticateUser)
+	private.Use(s.IsBanned)
 	private.HandleFunc("/", s.handleWhoAmI()).Methods("GET")
 	private.HandleFunc("/all", s.findAll()).Methods("GET")
 	private.HandleFunc("/delete", s.handleDelete()).Methods("DELETE")
 	private.HandleFunc("/search_username", s.handleFindUserByUsernameLike()).Methods("GET")
+	// /private/post/*
 	posts := s.router.PathPrefix("/private/post").Subrouter()
 	posts.Use(s.authenticateUser)
+	posts.Use(s.IsBanned)
 	posts.HandleFunc("/", s.handlePostsCreate()).Methods("POST")
 	posts.HandleFunc("/", s.handleGetPostsForUser()).Methods("GET")
 	posts.HandleFunc("/", s.handleDeletePost()).Methods("DELETE")
@@ -71,9 +75,43 @@ func (s *server) configureRouter() {
 	posts.HandleFunc("/like/{id}", s.handleLikePost()).Methods("POST")
 	comments := s.router.PathPrefix("/private/comment").Subrouter()
 	comments.Use(s.authenticateUser)
+	comments.Use(s.IsBanned)
 	comments.HandleFunc("/", s.handleCommentCreate()).Methods("POST")
 	comments.HandleFunc("/{id}", s.handleGetComments()).Methods("GET")
 	comments.HandleFunc("/{id}", s.handleDeleteComment()).Methods("DELETE")
+	admin := s.router.PathPrefix("/private/admin").Subrouter()
+	admin.Use(s.authenticateUser)
+	admin.Use(s.IsBanned)
+	admin.Use(s.RoleAdmin)
+	admin.HandleFunc("/post/{id}", s.deletePost()).Methods("DELETE")
+	admin.HandleFunc("/user/{id}", s.deleteUser()).Methods("DELETE")
+	admin.HandleFunc("/comment/{id}", s.deleteComment()).Methods("DELETE")
+	admin.HandleFunc("/ban/{id}", s.handleBanUser()).Methods("POST")
+	admin.HandleFunc("/unban/{id}", s.handleUnBanUser()).Methods("POST")
+}
+
+func (s *server) RoleAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := r.Context().Value(ctxKeyUser).(*models.User)
+		if u.Role != "ADMIN" {
+			s.error(w, r, http.StatusUnauthorized, errNotAuthenticated)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKeyRole, u.Role)))
+	})
+}
+
+func (s *server) IsBanned(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("checking..")
+		u := r.Context().Value(ctxKeyUser).(*models.User)
+		err := s.store.User().IsBanned(u.Id)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *server) authenticateUser(next http.Handler) http.Handler {
@@ -408,6 +446,86 @@ func (s *server) handleDeleteComment() http.HandlerFunc {
 		}
 		u := r.Context().Value(ctxKeyUser).(*models.User)
 		err = s.store.Comment().DeleteById(id, u.Id)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		s.respond(w, r, http.StatusOK, nil)
+	}
+}
+
+func (s *server) deleteUser() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		params := mux.Vars(r)
+		userId, err := strconv.Atoi(params["id"])
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+		}
+		err = s.store.User().DeleteById(userId)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		s.respond(w, r, http.StatusOK, nil)
+	}
+}
+
+func (s *server) deletePost() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		params := mux.Vars(r)
+		postId, err := strconv.Atoi(params["id"])
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+		}
+		err = s.store.Post().DeleteByIdADMIN(postId)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		s.respond(w, r, http.StatusOK, nil)
+	}
+}
+
+func (s *server) deleteComment() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		params := mux.Vars(r)
+		commentId, err := strconv.Atoi(params["id"])
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+		}
+		err = s.store.Comment().DeleteByIdADMIN(commentId)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		s.respond(w, r, http.StatusOK, nil)
+	}
+}
+
+func (s *server) handleBanUser() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		params := mux.Vars(r)
+		userId, err := strconv.Atoi(params["id"])
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+		}
+		err = s.store.User().BanById(userId, 1)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		s.respond(w, r, http.StatusOK, nil)
+	}
+}
+
+func (s *server) handleUnBanUser() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		params := mux.Vars(r)
+		userId, err := strconv.Atoi(params["id"])
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+		}
+		err = s.store.User().UnBanById(userId)
 		if err != nil {
 			s.error(w, r, http.StatusBadRequest, err)
 			return

@@ -76,3 +76,13 @@ func (r *CommentRepository) DeleteById(id, userId int) error {
 
 	return nil
 }
+
+func (r *CommentRepository) DeleteByIdADMIN(id int) error {
+	if _, err := r.store.db.Query("DELETE FROM comment WHERE id = $1",
+		id,
+	); err != nil {
+		return err
+	}
+
+	return nil
+}

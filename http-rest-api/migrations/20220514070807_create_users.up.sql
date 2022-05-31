@@ -2,7 +2,8 @@ CREATE TABLE users (
     id bigserial not null primary key,
     username varchar not null unique,
     email varchar not null unique,
-    password varchar not null
+    password varchar not null,
+    role varchar not null 
 );
 
 CREATE TABLE posts (
@@ -27,3 +28,10 @@ CREATE TABLE comment (
     created_date DATE,
     text text not null
 );
+
+CREATE TABLE banned_users (
+    user_id bigserial not null,
+    banned BIT not null,
+    start_time BIGINT not null,
+    end_time BIGINT not null
+)
