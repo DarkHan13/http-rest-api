@@ -10,5 +10,20 @@ CREATE TABLE posts (
     user_id bigserial not null,
     username varchar not null,
     CreatedDate DATE,
-    caption varchar not null
+    caption text not null,
+    likes bigserial not null
+);
+
+CREATE TABLE users_liked (
+    post_id bigserial not null,
+    user_id bigserial not null
+);
+
+CREATE TABLE comment (
+    id bigserial not null primary key,
+    user_id bigserial not null,
+    username varchar not null,
+    post_id bigserial not null,
+    created_date DATE,
+    text text not null
 );

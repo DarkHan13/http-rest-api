@@ -15,4 +15,14 @@ type UserRepository interface {
 type PostRepository interface {
 	Create(post *models.Post) error
 	FindAllByUserId(int) (*[]models.Post, error)
+	FindAll() (*[]models.Post, error)
+	FindById(int) (*models.Post, error)
+	DeleteById(int, int) error
+	Like(int, int) (*models.Post, error)
+}
+
+type CommentRepository interface {
+	Create(comment *models.Comment) error
+	FindAllByPostId(int) (*[]models.Comment, error)
+	DeleteById(int, int) error
 }

@@ -8,6 +8,7 @@ type Post struct {
 	Username    string    `json:"username"`
 	Caption     string    `json:"caption"`
 	CreatedDate time.Time `json:"createdDate"`
+	Likes       int       `json:"likes"`
 }
 
 // BeforeCreate Post

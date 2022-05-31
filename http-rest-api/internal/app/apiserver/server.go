@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/DarkHan13/http-rest-api/internal/app/models"
@@ -62,8 +63,17 @@ func (s *server) configureRouter() {
 	private.HandleFunc("/search_username", s.handleFindUserByUsernameLike()).Methods("GET")
 	posts := s.router.PathPrefix("/private/post").Subrouter()
 	posts.Use(s.authenticateUser)
-	posts.HandleFunc("/create", s.handlePostsCreate()).Methods("POST")
+	posts.HandleFunc("/", s.handlePostsCreate()).Methods("POST")
 	posts.HandleFunc("/", s.handleGetPostsForUser()).Methods("GET")
+	posts.HandleFunc("/", s.handleDeletePost()).Methods("DELETE")
+	posts.HandleFunc("/all", s.handleGetAllPosts()).Methods("GET")
+	posts.HandleFunc("/{id}", s.handleGetPostById()).Methods("GET")
+	posts.HandleFunc("/like/{id}", s.handleLikePost()).Methods("POST")
+	comments := s.router.PathPrefix("/private/comment").Subrouter()
+	comments.Use(s.authenticateUser)
+	comments.HandleFunc("/", s.handleCommentCreate()).Methods("POST")
+	comments.HandleFunc("/{id}", s.handleGetComments()).Methods("GET")
+	comments.HandleFunc("/{id}", s.handleDeleteComment()).Methods("DELETE")
 }
 
 func (s *server) authenticateUser(next http.Handler) http.Handler {
@@ -250,6 +260,30 @@ func (s *server) handlePostsCreate() http.HandlerFunc {
 	}
 }
 
+func (s *server) handleDeletePost() http.HandlerFunc {
+	type request struct {
+		Id string `json:"id"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		req := &request{}
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		postId, err := strconv.Atoi(req.Id)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+		}
+		u := r.Context().Value(ctxKeyUser).(*models.User)
+		err = s.store.Post().DeleteById(postId, u.Id)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		s.respond(w, r, http.StatusOK, nil)
+	}
+}
+
 func (s *server) handleGetPostsForUser() http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -262,6 +296,124 @@ func (s *server) handleGetPostsForUser() http.HandlerFunc {
 		s.respond(w, r, http.StatusOK, posts)
 	}
 
+}
+
+func (s *server) handleGetAllPosts() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		post, err := s.store.Post().FindAll()
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		s.respond(w, r, http.StatusOK, post)
+	}
+}
+
+func (s *server) handleGetPostById() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		params := mux.Vars(r)
+		postId, err := strconv.Atoi(params["id"])
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+		}
+		post, err := s.store.Post().FindById(postId)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+		}
+		s.respond(w, r, http.StatusOK, post)
+	}
+}
+
+func (s *server) handleLikePost() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		params := mux.Vars(r)
+		postId, err := strconv.Atoi(params["id"])
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		user := r.Context().Value(ctxKeyUser).(*models.User)
+		post, err := s.store.Post().Like(postId, user.Id)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		s.respond(w, r, http.StatusOK, post)
+	}
+}
+
+func (s *server) handleCommentCreate() http.HandlerFunc {
+
+	type request struct {
+		PostId string `json:"post_id"`
+		Text   string `json:"text"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		req := &request{}
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			fmt.Println(r.Body)
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+
+		u := r.Context().Value(ctxKeyUser).(*models.User)
+
+		postId, err := strconv.Atoi(req.PostId)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+
+		c := models.Comment{
+			UserId:   u.Id,
+			PostId:   postId,
+			Username: u.Username,
+			Text:     req.Text,
+		}
+
+		if err := s.store.Comment().Create(&c); err != nil {
+			s.error(w, r, http.StatusUnprocessableEntity, err)
+			return
+		}
+
+		s.respond(w, r, http.StatusCreated, c)
+	}
+}
+
+func (s *server) handleGetComments() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		params := mux.Vars(r)
+		postId, err := strconv.Atoi(params["id"])
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		posts, err := s.store.Comment().FindAllByPostId(postId)
+		if err != nil {
+			s.error(w, r, http.StatusInternalServerError, err)
+			return
+		}
+		s.respond(w, r, http.StatusOK, posts)
+	}
+}
+
+func (s *server) handleDeleteComment() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		params := mux.Vars(r)
+		id, err := strconv.Atoi(params["id"])
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		u := r.Context().Value(ctxKeyUser).(*models.User)
+		err = s.store.Comment().DeleteById(id, u.Id)
+		if err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+		s.respond(w, r, http.StatusOK, nil)
+	}
 }
 
 func (s *server) error(w http.ResponseWriter, r *http.Request, code int, err error) {
